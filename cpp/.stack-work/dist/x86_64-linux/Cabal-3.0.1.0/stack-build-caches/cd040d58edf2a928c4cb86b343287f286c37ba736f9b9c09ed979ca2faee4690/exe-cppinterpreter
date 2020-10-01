@@ -1,0 +1,20 @@
+/home/podurem/Downloads/cpp-project/cpp/app/Main.hs:
+  hash: fe02087739997050e1e42c7f3077fb2d50fc42d5846715701afec4b444b4e4e5
+  size: 989
+  modtime: 1601573142
+/home/podurem/Downloads/cpp-project/cpp/cppinterpreter.cabal:
+  hash: fbbe38ed270556156db5711ea4c6f5d484efb40bac46e8ad14b127ce622fc5cd
+  size: 1212
+  modtime: 1601574860
+/home/podurem/Downloads/cpp-project/cpp/README.md:
+  hash: 42ab79b8fa994bb1bd94b7c9a463dd0f39542bfc69c72ff7341492b318a7bddc
+  size: 228
+  modtime: 1601574027
+/home/podurem/Downloads/cpp-project/cpp/src/Parser.y:
+  hash: 8740350ba99b5c8cca52139c6a8856c63386eeb392bc833f7da39af580a29247
+  size: 6895
+  modtime: 1601223449
+/home/podurem/Downloads/cpp-project/cpp/src/Lexer.x:
+  hash: 40e28776e8c6131bb64d8376c28a259691ee770afdd4bd64930d97ec04cffe29
+  size: 1432
+  modtime: 1601507437
