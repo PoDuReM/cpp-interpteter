@@ -36,8 +36,3 @@ interpretSpec =
       snd (st ! "b") `shouldBe` HNumber (HInt 11)
       fst (st ! "a") `shouldBe` 0
       fst (st ! "b") `shouldBe` 0
-
-      
-      
-
-
