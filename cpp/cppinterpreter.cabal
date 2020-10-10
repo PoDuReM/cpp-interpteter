@@ -21,7 +21,11 @@ library
   exposed-modules:     Lib, Parser, Lexer, CppDsl, Type, Interpretator, Printer
   ghc-options:         -Wall
   build-depends:       base >= 4.9 && < 5
+                     , transformers
                      , containers
+                     , mtl
+                     , directory
+                     , time
                      , array
   build-tools:         alex
                      , happy
@@ -33,5 +37,26 @@ executable cppinterpreter
   ghc-options:         -Wall -Werror -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , cppinterpreter
+                     , transformers
+                     , mtl
                      , directory
+                     , time
+                     , containers
+  default-language:    Haskell2010
+
+test-suite cpp-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  other-modules:       TestUtil, InterpretTest, PrintTest
+  build-depends:
+      base
+    , hspec
+    , QuickCheck        >= 2.12 && < 2.14
+    , cppinterpreter
+    , stm
+    , mtl
+    , array
+    , containers
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010

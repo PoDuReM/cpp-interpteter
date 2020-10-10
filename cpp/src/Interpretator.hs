@@ -1,3 +1,6 @@
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -6,81 +9,122 @@ module Interpretator
   ( Interpretator (..)
   ) where
 
-import CppDsl
-import Data.IORef
+import Control.Monad.State
 import Control.Applicative(liftA2)
-import Control.Monad (when)
+import CppDsl
+import Data.Map
 import GHC.Float (double2Int)
 import Type
+import Control.Monad.Identity
 
-newtype Interpretator s = Interpretator { interpret :: IO s}
+type Vars = Map String MyRef
 
-instance Functor (Interpretator) where
+class Monad m => Console m where
+  printStr :: String -> m ()
+
+  readInt :: m Int
+
+  readDouble :: m Double
+
+  readBool :: m Bool
+
+  readString :: m String
+
+instance Console IO where
+  printStr   = putStrLn
+
+  readInt    = readLn :: IO Int
+
+  readDouble = readLn :: IO Double
+
+  readBool   = readLn :: IO Bool
+
+  readString = readLn :: IO String
+
+instance Console Identity where
+  printStr _ = return ()
+
+  readInt    = return 0
+
+  readDouble = return 0.0
+
+  readBool   = return False
+
+  readString = return "test"
+
+newtype Interpretator m s = Interpretator { interpret :: StateT Vars m s}
+
+instance Console m => Functor (Interpretator m) where
   fmap func = Interpretator . fmap func . interpret
 
-instance Applicative (Interpretator) where
+instance Console m => Applicative (Interpretator m) where
   pure = Interpretator . return
 
-  (<*>) func a = Interpretator (do
-    f <- interpret func
+  (<*>) func a = Interpretator $ do
+    f  <- interpret func
     a1 <- interpret a
-    return $ f a1)
+    return $ f a1
 
-instance Monad (Interpretator) where
-  (>>=) a func = Interpretator (do
+instance Console m => Monad (Interpretator m) where
+  (>>=) a func = Interpretator $ do
     a1 <- interpret a
-    interpret $ func a1)
+    interpret $ func a1
 
-fillVar :: Int -> ProgType  -> IO (MyRef)
-fillVar a PInt = newMyRef a $ HNumber (HInt 0)
-fillVar a PDouble = newMyRef a $ HNumber (HDouble 0)
-fillVar a PString = newMyRef a $ HString ""
-fillVar a PBool = newMyRef a $ HBool False
+defaultValue :: ProgType -> HValue
+defaultValue PInt    = (HNumber (HInt 0))
+defaultValue PDouble = (HNumber (HDouble 0))
+defaultValue PString =  (HString "")
+defaultValue PBool   =  (HBool False)
 
 checkTyp :: HValue -> HValue -> HValue
-checkTyp (HNumber (HInt _)) b@(HNumber (HInt _)) = b
-checkTyp (HNumber (HInt _)) (HNumber (HDouble b)) = HNumber $ HInt (double2Int b)
-checkTyp (HNumber (HInt _)) (HBool False) = HNumber (HInt 0)
-checkTyp (HNumber (HInt _)) (HBool True) = HNumber (HInt 1)
-checkTyp (HNumber _) (HString a) = error $ "can't cast string " <> a <> " to number"
-checkTyp (HString _) (HNumber _) = error $ "can't cast number to a string"
+checkTyp (HNumber (HInt _))    b@(HNumber (HInt _))    = b
+checkTyp (HNumber (HInt _))    (HNumber (HDouble b))   =
+  HNumber $ HInt (double2Int b)
+checkTyp (HNumber (HInt _))    (HBool False)           = HNumber (HInt 0)
+checkTyp (HNumber (HInt _))    (HBool True)            = HNumber (HInt 1)
+checkTyp (HNumber       _)     (HString a)             =
+  error $ "can't cast string " <> a <> " to number"
+checkTyp (HString _)           (HNumber _)             =
+  error $ "can't cast number to a string"
 checkTyp (HNumber (HDouble _)) b@(HNumber (HDouble _)) = b
-checkTyp (HNumber (HDouble _)) (HNumber (HInt b)) = HNumber $ HDouble (fromIntegral b)
-checkTyp (HNumber (HDouble _)) (HBool _) = error "trying to cast bool to double"
-checkTyp (HBool _) b@(HBool _) = b
-checkTyp (HBool _) (HNumber (HInt b)) = HBool $ b > 0
-checkTyp (HBool _) (HNumber (HDouble _)) = error "trying to cast double to bool"
-checkTyp (HBool _) (HString _) = error "trying to cast string to bool"
-checkTyp (HString _) b@(HString _) = b
-checkTyp (HString _) (HBool _) = error "trying to cast bool to a string"
+checkTyp (HNumber (HDouble _)) (HNumber (HInt b))      =
+  HNumber $ HDouble (fromIntegral b)
+checkTyp (HNumber (HDouble _)) (HBool _)               =
+  error "trying to cast bool to double"
+checkTyp (HBool _)             b@(HBool _)             = b
+checkTyp (HBool _)             (HNumber (HInt b))      = HBool $ b > 0
+checkTyp (HBool _)             (HNumber (HDouble _))   =
+  error "trying to cast double to bool"
+checkTyp (HBool _)             (HString _)             =
+  error "trying to cast string to bool"
+checkTyp (HString _)           b@(HString _)           = b
+checkTyp (HString _)           (HBool _)               =
+  error "trying to cast bool to a string"
 
 toBoolValue :: HValue -> Bool
-toBoolValue (HNumber (HInt a)) = a > 0
+toBoolValue (HNumber (HInt    a)) = a > 0
 toBoolValue (HNumber (HDouble a)) = a > 0
-toBoolValue (HString s) = not (null s)
-toBoolValue (HBool a) = a
+toBoolValue (HString          s)  = not (Prelude.null s)
+toBoolValue (HBool            a)  = a
 
-type MyRef = IORef (Int, HValue)
+type MyRef = (Int, HValue)
 
-readMyRef :: MyRef -> IO HValue
-readMyRef a = do 
-  val <- readIORef a 
-  return $ snd val
+readMyRef :: MyRef -> HValue
+readMyRef a = snd a
 
-writeMyRef :: MyRef -> HValue -> IO ()
-writeMyRef a val = do 
-  av <- readIORef a
-  case fst av of 
-    0 -> writeIORef a (0, val)
-    1 -> writeIORef a (2, val)
-    2 -> return ()
+writeMyRef :: MyRef -> HValue -> MyRef
+writeMyRef var val =
+  case fst var of
+    0 -> (0, val)
+    1 -> (2, val)
+    2 -> (2, snd var)
     _ -> error "wrong mode"
 
-newMyRef :: Int -> HValue -> IO (MyRef) 
-newMyRef mode val = newIORef (mode, val)
+newMyRef :: Int -> HValue -> MyRef
+newMyRef mode val = (mode, val)
 
-instance CppDsl (Interpretator) where
-  type Var (Interpretator) = MyRef
+instance Console m => CppDsl (Interpretator m) where
+  type Var (Interpretator m) = String
 
   (@~) a = Interpretator $ return (toVal a)
 
@@ -91,21 +135,24 @@ instance CppDsl (Interpretator) where
       helper (HString a) (HString b) = HString $ a <> b
       helper (HBool   a) (HBool   b) = HBool $ a || b
       helper (HBool   a) (HNumber b) = HNumber $ HInt (fromEnum a) + b
-      helper a           b           = error $ "Can't add " <> show a <> " to " <> show b
+      helper          a           b  =
+        error $ "Can't add " <> show a <> " to " <> show b
 
   (@-) = liftA2 helper
     where
       helper (HNumber a) (HNumber b) = HNumber $ a - b
       helper (HNumber a) (HBool   b) = HNumber $ a - HInt (fromEnum b)
       helper (HBool   a) (HNumber b) = HNumber $ HInt (fromEnum a) - b
-      helper a           b           = error $ "Can't subtract " <> show a <> " and " <> show b
+      helper          a           b  =
+        error $ "Can't subtract " <> show a <> " and " <> show b
 
   (@*) = liftA2 helper
     where
       helper (HNumber a) (HNumber b) = HNumber $ a * b
       helper (HNumber a) (HBool   b) = HNumber $ a * HInt (fromEnum b)
       helper (HBool   a) (HNumber b) = HNumber $ HInt (fromEnum a) * b
-      helper a           b           = error $ "Can't multiply " <> show a <> " and " <> show b
+      helper          a           b  =
+        error $ "Can't multiply " <> show a <> " and " <> show b
 
 
   (@/) = liftA2 helper
@@ -113,33 +160,20 @@ instance CppDsl (Interpretator) where
       helper (HNumber a) (HNumber b) = HNumber $ a / b
       helper (HNumber a) (HBool   b) = HNumber $ a / HInt (fromEnum b)
       helper (HBool   a) (HNumber b) = HNumber $ HInt (fromEnum a) / b
-      helper a           b           = error $ "Can't divide " <> show a <> " and " <> show b
+      helper          a           b  =
+        error $ "Can't divide " <> show a <> " and " <> show b
 
+  (@<)  = liftA2 (\a b -> HBool $ a < b)
 
-  (@<) a b = Interpretator (do
-    a1 <- interpret a
-    b1 <- interpret b
-    return (HBool $ a1 < b1))
-  (@<=) a b = Interpretator (do
-    a1 <- interpret a
-    b1 <- interpret b
-    return (HBool $ a1 <= b1))
-  (@>) a b = Interpretator (do
-    a1 <- interpret a
-    b1 <- interpret b
-    return (HBool $ a1 > b1))
-  (@>=) a b = Interpretator (do
-    a1 <- interpret a
-    b1 <- interpret b
-    return (HBool $ a1 >= b1))
-  (@==) a b = Interpretator (do
-    a1 <- interpret a
-    b1 <- interpret b
-    return (HBool $ a1 == b1))
-  (@/=) a b = Interpretator (do
-    a1 <- interpret a
-    b1 <- interpret b
-    return (HBool $ a1 /= b1))
+  (@<=) = liftA2 (\a b -> HBool $ a <= b)
+
+  (@>)  = liftA2 (\a b -> HBool $ a > b)
+
+  (@>=) = liftA2 (\a b -> HBool $ a >= b)
+
+  (@==) = liftA2 (\a b -> HBool $ a == b)
+
+  (@/=) = liftA2 (\a b -> HBool $ a /= b)
 
   (#) = (>>)
 
@@ -148,69 +182,102 @@ instance CppDsl (Interpretator) where
     return ()
 
   sCout val = Interpretator $ do 
-    val1 <- interpret val 
-    putStrLn $ show val1
-  
-  sCin var = Interpretator $ do 
-    v <- interpret var
-    v1 <- readMyRef v
-    case v1 of 
+    v <- interpret val
+    lift $ printStr . show $ v
+
+  sCin var = Interpretator $ do
+    st <- get
+    varName <- interpret var
+    let ref    = (st ! varName)
+    let refVal = readMyRef ref
+    case refVal of
       (HNumber (HInt _)) -> do 
-        val <- readLn :: IO Int
-        writeMyRef v (HNumber (HInt val))
+        let newVal   = readInt
+                   >>= return . checkTyp refVal . HNumber . HInt
+        let newST    = lift $ newVal >>= (\a ->
+              return ((insert varName (writeMyRef ref a) st)))
+        mapStateT (helper) newST
       (HNumber (HDouble _)) -> do 
-        val <- readLn :: IO Double
-        writeMyRef v (HNumber (HDouble val))
+        let newVal   = readDouble
+                   >>= return . checkTyp refVal . HNumber . HDouble
+        let newST    = lift $ newVal >>= (\a ->
+              return ((insert varName (writeMyRef ref a) st)))
+        mapStateT (helper) newST
       (HBool _) -> do 
-        val <- readLn :: IO Bool 
-        writeMyRef v (HBool val)
+        let newVal   = readBool
+                   >>= return . checkTyp refVal . HBool
+        let newST    = lift $ newVal >>= (\a ->
+              return ((insert varName (writeMyRef ref a) st)))
+        mapStateT (helper) newST
       (HString _) -> do 
-        val <- readLn :: IO String 
-        writeMyRef v (HString val)
+        let newVal   = readString
+                   >>= return . checkTyp refVal . HString
+        let newST    = lift $ newVal >>= (\a ->
+              return ((insert varName (writeMyRef ref a) st)))
+        mapStateT (helper) newST
+    where
+      helper
+        :: m (Map String MyRef, Map String MyRef)
+        -> m ((), Map String MyRef)
+      helper a = do
+        (aa, _) <- a
+        return ((), aa)
 
   (@=) var val = Interpretator $ do
-    var1 <- interpret var
-    val1 <- interpret val
-    var1Val <- readMyRef var1
-    writeMyRef var1 $ checkTyp var1Val val1 
+    varName <- interpret var
+    valVal  <- interpret val
+    st      <- get
+    let ref    = st ! varName
+    let refVal = readMyRef ref
+    put $ insert varName (writeMyRef ref (checkTyp refVal valVal)) st
   
-  sWithVar typ val func = Interpretator $ do
-    val1 <- interpret val
-    v <- fillVar 0 typ
-    vVal <- readMyRef v
-    writeMyRef v $ checkTyp vVal val1
-    interpret $ func (return v)
+  sWithVar typ name val' func = Interpretator $ do
+    st  <- get
+    val <- interpret val'
+    let v = defaultValue typ
+    put $ insert name (newMyRef 0 $ checkTyp v val) st
+    interpret $ func (return name)
   
   sFun0 typ func = Interpretator $ do 
-    res <- fillVar 1 typ
-    interpret $ func (return res)
-    readMyRef res
+    let def     = defaultValue typ
+    let resName = "FuncRes'"
+    let newMp   = fromList [(resName, newMyRef 1 def)]
+    let s       = execStateT (interpret (func (return resName))) newMp
+    lift $ s  >>= (\a -> return . snd $ a ! resName)
 
   sFun1 typ func typ1 val1 = Interpretator $ do
-    res <- fillVar 1 typ
-    arg1 <- fillVar 0 typ1
-    arg1Val <- readMyRef arg1
-    val1Val <- interpret val1
-    writeMyRef arg1 (checkTyp arg1Val val1Val)
-    interpret $ func (return arg1) (return res)
-    readMyRef res
-    
+    let resDefVal  = defaultValue typ
+    let resName    = "FuncRes'"
+    let arg1Name   = "arg1'"
+    let arg1DefVal = defaultValue typ1
+    arg1Val <- interpret val1
+    let newSt = fromList [ (resName, newMyRef 1 resDefVal)
+                         , (arg1Name, newMyRef 0 $ checkTyp arg1DefVal arg1Val) ]
+    let s = execStateT (interpret (func (return arg1Name)
+                                        (return resName))) newSt
+    lift $ s >>= (\a -> return . snd $ a ! resName)
+
   sFun2 typ func typ1 typ2 var1 var2 = Interpretator $ do 
-    res <- fillVar 1 typ
-    arg1 <- fillVar 0 typ1
-    arg2 <- fillVar 0 typ2
-    arg1Val <- readMyRef arg1
-    arg2Val <- readMyRef arg2
-    var1Val <- interpret var1
-    var2Val <- interpret var2
-    writeMyRef arg1 (checkTyp arg1Val var1Val)
-    writeMyRef arg2 (checkTyp arg2Val var2Val)
-    interpret $ func (return arg1) (return arg2) (return res)
-    readMyRef res
+    let resDefVal  = defaultValue typ
+    let resName    = "FuncRes'"
+    let arg1Name   = "arg1'"
+    let arg1DefVal = defaultValue typ1
+    let arg2Name   = "arg2'"
+    let arg2DefVal = defaultValue typ2
+    arg1Val <- interpret var1
+    arg2Val <- interpret var2
+    let newSt = fromList [ (resName, newMyRef 1 resDefVal)
+                         , (arg1Name, newMyRef 0 $ checkTyp arg1DefVal arg1Val)
+                         , (arg2Name, newMyRef 0 $ checkTyp arg2DefVal arg2Val) ]
+    let s = execStateT (interpret (func (return arg1Name)
+                                        (return arg2Name)
+                                        (return resName))) newSt
+    lift $ s >>= (\a -> return . snd $ a ! resName)
 
   readVar var = Interpretator $ do
-    var1 <- interpret var
-    readMyRef var1
+    st  <- get
+    val <- interpret var
+    return (snd $ st ! val)
 
   sWhile cond body = Interpretator $ do 
     flag <- interpret cond

@@ -12,7 +12,7 @@ import Data.Typeable
 newtype Printer a = Printer { toStr :: IORef Int -> String -> IO String }
 
 stripBeginWhiteSpaces :: String -> String
-stripBeginWhiteSpaces (x:xs) = if x == ' '
+stripBeginWhiteSpaces (x:xs) = if   x == ' '
                                then stripBeginWhiteSpaces xs
                                else x : xs
 stripBeginWhiteSpaces [] = ""
@@ -20,49 +20,60 @@ stripBeginWhiteSpaces [] = ""
 instance CppDsl Printer where
   type (Var Printer) = String
 
-  (@~) a = Printer (\_ _ -> return $ "(@~)(" <> show a <> " :: " <> show (typeOf a) <> ")")
+  (@~) a = Printer (\_ _ ->
+    return $ "(@~)(" <> show a <> " :: " <> show (typeOf a) <> ")")
 
   (@+) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa  <> " @+ " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa  <> " @+ " <> stripBeginWhiteSpaces sb <> ")")
   (@*) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa  <> " @* " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa  <> " @* " <> stripBeginWhiteSpaces sb <> ")")
   (@-) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa  <> " @- " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa  <> " @- " <> stripBeginWhiteSpaces sb <> ")")
   (@/) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa <> " @/ " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa <> " @/ " <> stripBeginWhiteSpaces sb <> ")")
 
   (@<) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa <> " @< " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa <> " @< " <> stripBeginWhiteSpaces sb <> ")")
   (@<=) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa <> " @<= " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa <> " @<= " <> stripBeginWhiteSpaces sb <> ")")
   (@>) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa <> " @> " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa <> " @> " <> stripBeginWhiteSpaces sb <> ")")
   (@>=) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa  <> " @>= " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa  <> " @>= " <> stripBeginWhiteSpaces sb <> ")")
   (@==) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa <> " @== " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa <> " @== " <> stripBeginWhiteSpaces sb <> ")")
   (@/=) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ "(" <> stripBeginWhiteSpaces sa <> " @/= " <> stripBeginWhiteSpaces sb <> ")")
+    return $
+      "(" <> stripBeginWhiteSpaces sa <> " @/= " <> stripBeginWhiteSpaces sb <> ")")
 
   (#) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
@@ -71,15 +82,16 @@ instance CppDsl Printer where
   (@=) a b = Printer (\v pr -> do 
     sa <- toStr a v pr
     sb <- toStr b v pr
-    return $ pr <> stripBeginWhiteSpaces sa  <> " @= " <> stripBeginWhiteSpaces sb)
+    return $
+      pr <> stripBeginWhiteSpaces sa  <> " @= " <> stripBeginWhiteSpaces sb)
 
-  sWithVar typ var func = Printer (\v pr -> do 
+  sWithVar typ name var func = Printer (\v pr -> do
     num <- readIORef v
     writeIORef v (num + 1)
     v1 <- toStr var v pr
     let retStr = "v" <> show num
     f1 <- toStr (func $ Printer (\_ _ -> return retStr)) v (pr <> "  ")
-    return $ pr <> "sWithVar " <> show typ <> " ("  
+    return $ pr <> "sWithVar " <> show typ <> " " <> show name <> " ("
                 <> stripBeginWhiteSpaces v1 <> ") (\\" <> retStr <> " ->\n" 
                 <> f1 <> ")")
 
@@ -105,7 +117,7 @@ instance CppDsl Printer where
 
   sFun2 typ func typ1 typ2 arg1 arg2 = Printer (\v pr -> do 
     num <- readIORef v 
-    let retStr = "v" <> show num 
+    let retStr  = "v" <> show num
     let arg1Str = "v" <> show (num + 1)
     let arg2Str = "v" <> show (num + 2)
     writeIORef v (num + 3)
@@ -132,7 +144,8 @@ instance CppDsl Printer where
     a1 <- toStr a v pr
     b1 <- toStr b v (pr <> "  ")
     c1 <- toStr c v (pr <> "  ")
-    return $ pr <> "sIf (" <> stripBeginWhiteSpaces a1 <> ") (\n" <> b1 <> ") (\n" <> c1 <> ")")
+    return $
+      pr <> "sIf (" <> stripBeginWhiteSpaces a1 <> ") (\n" <> b1 <> ") (\n" <> c1 <> ")")
   
   sCin a = Printer (\v pr -> do 
     a1 <- toStr a v pr 
